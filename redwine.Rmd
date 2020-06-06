@@ -1,0 +1,139 @@
+---
+title: "redwine"
+author: "Madeline Li"
+date: "6/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+library(leaps)
+library(MASS)
+```
+
+```{r}
+dat = read.csv('winequality-red.csv', header = T)
+head(dat)
+names(dat)
+
+facid <- dat$fixed.acidity
+vacid <- dat$volatile.acidity
+cacid <- dat$citric.acid
+sugar <- dat$residual.sugar
+chlor <- dat$chlorides
+fsd <- dat$free.sulfur.dioxide
+tsd <- dat$total.sulfur.dioxide
+dens <- dat$density
+ph <- dat$pH
+sul <- dat$sulphates
+qual <- as.factor(dat$quality)
+alc <- dat$alcohol
+```
+
+
+```{r}
+pairs(dat)
+cor(dat)
+```
+
+###Use Step-wise Regression with AIC
+```{r}
+mod0 = lm(alcohol ~ 1, data = dat)
+mod.all = lm(alcohol ~., data = dat)
+step(mod0, scope = list(lower = mod0, upper = mod.all))
+
+#fit <- lm(formula = alcohol ~ density + quality + fixed.acidity + pH + residual.sugar + sulphates + free.sulfur.dioxide + citric.acid + volatile.acidity + chlorides + total.sulfur.dioxide, data = dat)
+fit <- lm(alc ~ dens + qual + facid + ph + sugar + sul + +fsd+tsd+cacid+vacid+chlor+tsd)
+```
+This model uses all of the potential predictors so it's not a very good model. 
+
+### Check for Assumptions
+```{r}
+qqnorm(fit$residuals)
+qqline(fit$residuals)
+plot(fit$fitted.values,fit$residuals,
+     xlab="Fitted Values",ylab="Residuals",main="Residuals vs Fitted")
+abline(h = 0)
+```
+
+###Best Subsets Regression 
+```{r}
+#Best subsets
+#R squared
+library(leaps)
+mod = regsubsets(cbind(facid, vacid, cacid, sugar, chlor, fsd, tsd, dens, ph, sul, qual), alc)
+summary.mod = summary(mod)
+summary.mod$which
+
+summary.mod$rsq
+# facid, vacid, cacid, sugar, dens, ph, sul, qual
+
+summary.mod$adjr2
+# facid, vacid, cacid, sugar, dens, ph, sul, qual
+
+n = nrow(dat)
+rss = summary.mod$rss
+mse = c(rss[1]/(n-2), rss[2]/(n-3), rss[3]/(n-4), rss[4]/(n-5), rss[5]/(n-6), rss[6]/(n-7), rss[7]/(n-8), rss[8]/(n-9))
+mse
+
+summary.mod$cp
+# facid, vacid, cacid, sugar, dens, ph, sul, qual
+```
+The model create by best subsets regression generates a model with 8 predictors. 
+
+### Check for Assumptions
+```{r}
+sfit <- lm(alc ~ facid+vacid+cacid+sugar+dens+ph+sul+qual)
+qqnorm(sfit$residuals)
+qqline(sfit$residuals)
+plot(sfit$fitted.values,sfit$residuals,
+     xlab="Fitted Values",ylab="Residuals",main="Residuals vs Fitted")
+abline(h = 0)
+```
+
+#Outliers
+###Identify Outliers
+```{r}
+sfit <- lm(alcohol ~ fixed.acidity + volatile.acidity + citric.acid + residual.sugar + density + pH + sulphates + quality, data = dat)
+rstudent(sfit)
+outliers = abs(rstudent(sfit))>3
+#outliers
+
+for(x in 1:nrow(dat)){
+  if(outliers[x] == TRUE) {
+    print(x)
+  } 
+}
+```
+
+###Remove Outliers
+```{r}
+ndat = dat[-c(244, 245, 266, 354, 396, 468, 485, 494, 500, 557, 559, 560, 565, 634, 652, 654, 732, 1427, 1575)]
+```
+
+###Create new model without outliers
+```{r}
+mod0 = lm(quality ~ 1, data = ndat)
+mod.all = lm(quality ~., data = ndat)
+step(mod0, scope = list(lower = mod0, upper = mod.all))
+fit <- lm(formula = quality ~ alcohol + volatile.acidity + sulphates + 
+            total.sulfur.dioxide + chlorides + pH + free.sulfur.dioxide, 
+          data = ndat)
+```
+
+###Model Adequacy Checking for new Model
+```{r}
+plot(fit$fitted.values, fit$residuals,
+     ylab="Residuals",
+     xlab = "Fitted Values",
+     main="Residuals vs Fitted Values")
+abline(h=0,col="red")
+
+qqnorm(fit$residuals)
+qqline(fit$residuals)
+
+```
