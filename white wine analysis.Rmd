@@ -1,0 +1,350 @@
+---
+title: "White Wine Analysis"
+author: "Ishana Narayanan"
+date: "June 5, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+white <- read.csv("winequality-white.csv")
+```
+
+```{r}
+library(leaps)
+library(ggplot2)
+library(reshape2)
+library(MASS)
+library(car)
+```
+
+# Part 1: Data Basics
+
+* fixed acidity = numeric, continuous
+* volatile acidity = numeric, continuous
+* citric acid = numeric, continuous
+* residual sugar = numeric, continuous
+* chlorides = numeric, continuous
+* free sulfur dioxide = numeric, continuous
+* total sulfur dioxide = numeric, continuous
+* density = numeric, continuous
+* pH = numeric, continuous
+* sulphates = numeric, continuous
+* alcohol = numeric, continuous
+* quality = categorical, ordinal
+
+# Part 2: Visualizing Data
+
+```{r}
+mod.full = lm(white$alcohol ~ white$fixed.acidity + white$volatile.acidity + white$citric.acid + white$residual.sugar + white$chlorides + white$free.sulfur.dioxide + white$total.sulfur.dioxide + white$density + white$pH + white$sulphates + white$quality)
+```
+
+(1) Scatterplot Matrix
+```{r}
+pairs(white, main="Scatterplot Maatrix of White Wine Quality Data")
+```
+
+(2) Correlation Matrix
+```{r}
+cor(white)
+```
+
+From the correlation matrix above, we see that there is a moderately positive linear relationship between alcohol and quality with a correlation value of 0.43557.
+
+Significant negative linear relationships:
+
+* alcohol and residual sugar (-0.45)
+
+* alcohol and total sulfur dioxide (-0.448)
+
+* alcohol and density (-0.78)
+
+* pH and fixed acidity (-0.4258)
+
+Significant positive linear relationships:
+
+* residual sugar and density (0.83)
+
+* density and total sulfur dioxide (0.529)
+
+* residual sugar and total sulfur dioxide (0.401)
+
+* total sulfur dioxide and free sulfur dioxide (0.6155)
+
+(3) Correlation Heatmap
+```{r}
+corr_white <- round(cor(white),2)
+melted_white <- melt(round(cor(white),2))
+ggplot(melted_white, aes(x=Var1, y=Var2, fill=value)) + geom_tile()
+```
+
+```{r}
+ get_lower_tri <- function(corr_white){
+    corr_white[lower.tri(corr_white)]<- NA
+    return(corr_white)
+  }
+```
+
+```{r}
+melted_white_lower <- melt(get_lower_tri(corr_white))
+```
+
+```{r}
+ggheatmap <- ggplot(melted_white_lower, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()
+
+ggheatmap + 
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5))
+```
+
+# Part 3: Regression Analysis
+
+## Best Subsets Regression
+
+### Fitting Model
+
+```{r}
+mod = regsubsets(cbind(white$fixed.acidity, white$volatile.acidity, white$citric.acid, white$residual.sugar, white$chlorides, white$free.sulfur.dioxide, white$total.sulfur.dioxide, white$density, white$pH, white$sulphates, white$quality), white$alcohol)
+summary.mod = summary(mod)
+summary.mod$which
+```
+
+(1) $R^2$
+```{r}
+summary.mod$rsq
+```
+
+
+(2) Adjusted $R^2$
+```{r}
+summary.mod$adjr2
+```
+
+(3) Mallow's Cp Statistic
+```{r}
+summary.mod$cp
+```
+
+According to the adjusted $R^2$ and Mallow's Cp statistic, the best model is one with 8 predictors. Those predictors are fixed acidity, volatile acidity, residual sugar, free sulfur dioxide, density, pH, sulphates, and quality.
+
+### Residual Analysis
+
+```{r}
+fit_subset = lm(white$alcohol ~ white$fixed.acidity + white$volatile.acidity + white$residual.sugar + white$free.sulfur.dioxide + white$density + white$pH + white$sulphates + white$quality)
+plot(fit_subset)
+```
+
+According to the Residuals vs. Fit plot, we see that there are extreme outliers impacting these plots. We should remove the outliers so that we have a better understanding of what these plots are depicting.
+
+### Removing Outliers
+
+```{r}
+out = rstudent(fit_subset)
+which(abs(out) > 3)
+```
+
+```{r}
+new_white <- white[-c(1321, 1418, 1527, 1654, 1664, 2731, 2732, 2782, 3140, 3620, 3624, 3902, 4534),]
+```
+
+### Returning to Residual Analysis
+
+```{r}
+fit_sub_no_outliers = lm(new_white$alcohol ~ new_white$density + new_white$residual.sugar + new_white$fixed.acidity + new_white$pH + new_white$sulphates + new_white$volatile.acidity + new_white$quality + new_white$free.sulfur.dioxide + new_white$total.sulfur.dioxide)
+plot(fit_sub_no_outliers)
+```
+
+* In the Residuals vs. Fit plot, since the residuals are evenly spread about $x=0$ without any fanning, we can conclude that the error variances are equal. Moreover, this even spread of residuals, indicating that a linear model is a good fit.
+
+* In the Normal Q-Q plot, the residuals are relatively following the curve. It is possible that this model is violating the non-normality LINE condition, so a transformation is needed to further investigate.
+
+* There are still a few outliers, but not nearly as many in the previous Residuals vs. Fit plot.
+
+* Thus, we can assume that from the above information that our model relatively meets the LINE conditions.
+
+## Stepwise Regression
+
+### Build Regression Model
+
+```{r}
+mod0 = lm(white$alcohol ~ 1)
+mod.full = lm(white$alcohol ~ white$fixed.acidity + white$volatile.acidity + white$citric.acid + white$residual.sugar + white$chlorides + white$free.sulfur.dioxide + white$total.sulfur.dioxide + white$density + white$pH + white$sulphates + white$quality)
+step(mod0, scope=list(lower=mod0, upper=mod.full))
+```
+
+Model: alcohol ~ density + residual sugar + fixed acidity + pH + sulphates + volatile acidity + quality + free sulfur dioxide + total sulfur dioxide
+
+### Residual Analysis
+
+```{r}
+fit_step = lm(white$alcohol ~ white$density + white$residual.sugar + white$fixed.acidity + white$pH + white$sulphates + white$volatile.acidity + white$quality + white$free.sulfur.dioxide + white$citric.acid + white$total.sulfur.dioxide)
+plot(fit_step)
+```
+
+According to the Residuals vs. Fit plot, we see that there are extreme outliers impacting these plots. We should remove the outliers so that we have a better understanding of what these plots are depicting.
+
+```{r}
+out = rstudent(fit_step)
+which(abs(out) > 3)
+```
+
+```{r}
+new_white <- white[-c(1321, 1418, 1527, 1654, 1664, 2731, 2732, 2782, 3140, 3620, 3624, 3902, 4534),]
+```
+
+```{r}
+fit_step_no_outliers = lm(new_white$alcohol ~ new_white$density + new_white$residual.sugar + new_white$fixed.acidity + new_white$pH + new_white$sulphates + new_white$volatile.acidity + new_white$quality + new_white$free.sulfur.dioxide + new_white$total.sulfur.dioxide)
+plot(fit_step_no_outliers)
+```
+
+The residuals for the best subsets and stepwise regression models look relatively the same. Therefore, we should go with the model which has greater simplicity. Thus, the model we are going to further examine is the best subsets regression model.
+
+Model: fit_subset = alcohol ~ fixed.acidity + volatile.acidity + residual.sugar + free.sulfur.dioxide + density + pH + sulphates + quality)
+
+## Part 4: Transformations, Residual Analysis, and LINE Conditions
+
+Since non-normality may potentially be an issue, we should take a log transformation on Y.
+
+## 1. Log Transformation on Y
+
+```{r}
+fit_y = lm(log(new_white$alcohol) ~ new_white$fixed.acidity + new_white$volatile.acidity + new_white$residual.sugar + new_white$free.sulfur.dioxide + new_white$density + new_white$pH + new_white$sulphates + new_white$quality)
+```
+
+## Residual Analysis
+
+```{r}
+plot(fit_y)
+```
+
+* Residuals vs. Fit Plot
+
+    + residuals are still evenly spread with no fanning, so the error terms have constant variance
+  
+    + linear fit is a good model
+  
+    + independent
+
+* Normal Q-Q Plot
+
+    + residuals follow the line better 
+  
+* LINE conditions are met
+
+## 2. BoxCox Transformation
+
+```{r}
+trans=boxcox(fit_sub_no_outliers)
+
+# (1) find the appropriate lambda based on max likelihood
+
+# lambda based on max likelihood
+lambda = trans$x[trans$y==max(trans$y)]
+print(lambda)
+
+# (2) apply transformation
+new_alcohol = (new_white$alcohol)^lambda
+```
+
+lambda = 0.1010101
+
+```{r}
+fit_boxcox = lm(new_alcohol ~ new_white$fixed.acidity + new_white$volatile.acidity + new_white$residual.sugar + new_white$free.sulfur.dioxide + new_white$density + new_white$pH + new_white$sulphates + new_white$quality)
+plot(fit_boxcox)
+```
+
+* Residuals vs. Fit Plot
+
+    + residuals are still evenly spread with no fanning, so the error terms have constant variance
+  
+    + linear fit is a good model
+  
+    + independent
+
+* Normal Q-Q Plot
+
+    + residuals follow the line better 
+  
+* LINE conditions are met
+
+## 3. Power Transformation
+
+```{r}
+power = powerTransform(cbind(new_white$fixed.acidity, new_white$volatile.acidity, new_white$residual.sugar, new_white$free.sulfur.dioxide, new_white$density, new_white$pH, new_white$sulphates, new_white$quality)~1, data=new_white)
+power$lambda
+```
+
+
+```{r}
+vol <- new_white$volatile.acidity^-0.1164062
+res <- new_white$residual.sugar^0.5070629
+free_sul <- new_white$free.sulfur.dioxide^0.4606441
+den <- new_white$density^3.0743939
+pH <- new_white$pH^-1.4484538
+sul <- new_white$sulphates^-0.4040728
+fix <- new_white$fixed.acidity^-0.0910319
+qual <- new_white$quality^0.7379825
+fit_power = lm(new_white$alcohol ~ fix + vol + res + free_sul + den + pH + sul + qual)
+plot(fit_power)
+```
+
+* Residuals vs. Fit Plot
+
+    + residuals are evenly spread but appear to be mildly fanning, so error terms may not be constant
+  
+    + linear fit is a good model
+  
+    + independent
+
+* Normal Q-Q Plot
+
+    + residuals follow the line but still curve on both ends
+  
+* LINE conditions are not met
+
+From the above transformations, we see that either a log transformation on Y or a BoxCox transformation gives us the best model. 
+
+# Outliers and High Leverage Points
+
+## Outliers
+```{r}
+out = rstudent(fit_boxcox)
+which(abs(out) > 3)
+```
+
+## Influential points
+```{r}
+hv <- hatvalues(fit_boxcox)
+threshold <- 3*sum(hatvalues(fit_boxcox))/nrow(white)
+which(abs(hv) > threshold)
+```
+
+## Cook's Distance
+
+```{r}
+cook <- cooks.distance(fit_boxcox)
+plot(fit_boxcox, which=4)
+```
+
