@@ -44,7 +44,7 @@ mod.full = lm(white$alcohol ~ white$fixed.acidity + white$volatile.acidity + whi
 
 (1) Scatterplot Matrix
 ```{r}
-pairs(white, main="Scatterplot Maatrix of White Wine Quality Data")
+pairs(white, main="Scatterplot Matrix of White Wine Quality Data", pch=19)
 ```
 
 (2) Correlation Matrix
@@ -104,7 +104,7 @@ ggheatmap <- ggplot(melted_white_lower, aes(Var2, Var1, fill = value))+
  coord_fixed()
 
 ggheatmap + 
-geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 3) +
 theme(
   axis.title.x = element_blank(),
   axis.title.y = element_blank(),
@@ -153,6 +153,7 @@ According to the adjusted $R^2$ and Mallow's Cp statistic, the best model is one
 
 ```{r}
 fit_subset = lm(white$alcohol ~ white$fixed.acidity + white$volatile.acidity + white$residual.sugar + white$free.sulfur.dioxide + white$density + white$pH + white$sulphates + white$quality)
+
 plot(fit_subset)
 ```
 
@@ -160,19 +161,36 @@ According to the Residuals vs. Fit plot, we see that there are extreme outliers 
 
 ### Removing Outliers
 
+(1) Outliers
+
 ```{r}
 out = rstudent(fit_subset)
 which(abs(out) > 3)
 ```
 
+(2) Influential Points
+
 ```{r}
-new_white <- white[-c(1321, 1418, 1527, 1654, 1664, 2731, 2732, 2782, 3140, 3620, 3624, 3902, 4534),]
+hv <- hatvalues(fit_subset)
+threshold <- 3*sum(hatvalues(fit_subset))/nrow(white)
+which(abs(hv) > threshold)
+```
+
+(3) Cook's Distance
+
+```{r}
+cook <- cooks.distance(fit_subset)
+plot(fit_subset, which=4)
+```
+
+```{r}
+new_white <- white[-c(1527, 1654, 1664, 2782, 3902),]
 ```
 
 ### Returning to Residual Analysis
 
 ```{r}
-fit_sub_no_outliers = lm(new_white$alcohol ~ new_white$density + new_white$residual.sugar + new_white$fixed.acidity + new_white$pH + new_white$sulphates + new_white$volatile.acidity + new_white$quality + new_white$free.sulfur.dioxide + new_white$total.sulfur.dioxide)
+fit_sub_no_outliers = lm(new_white$alcohol ~ new_white$fixed.acidity + new_white$volatile.acidity + new_white$residual.sugar + new_white$free.sulfur.dioxide + new_white$density + new_white$pH + new_white$sulphates + new_white$quality)
 plot(fit_sub_no_outliers)
 ```
 
@@ -184,6 +202,10 @@ plot(fit_sub_no_outliers)
 
 * Thus, we can assume that from the above information that our model relatively meets the LINE conditions.
 
+```{r}
+summary(fit_sub_no_outliers)
+```
+
 ## Stepwise Regression
 
 ### Build Regression Model
@@ -194,7 +216,7 @@ mod.full = lm(white$alcohol ~ white$fixed.acidity + white$volatile.acidity + whi
 step(mod0, scope=list(lower=mod0, upper=mod.full))
 ```
 
-Model: alcohol ~ density + residual sugar + fixed acidity + pH + sulphates + volatile acidity + quality + free sulfur dioxide + total sulfur dioxide
+Model: alcohol ~ density + residual sugar + fixed acidity + pH + sulphates + volatile acidity + quality + free sulfur dioxide + citric acid + total sulfur dioxide
 
 ### Residual Analysis
 
@@ -205,13 +227,32 @@ plot(fit_step)
 
 According to the Residuals vs. Fit plot, we see that there are extreme outliers impacting these plots. We should remove the outliers so that we have a better understanding of what these plots are depicting.
 
+### Removing Outliers
+
+(1) Outliers
+
 ```{r}
 out = rstudent(fit_step)
 which(abs(out) > 3)
 ```
 
+(2) Influential Points
+
 ```{r}
-new_white <- white[-c(1321, 1418, 1527, 1654, 1664, 2731, 2732, 2782, 3140, 3620, 3624, 3902, 4534),]
+hv <- hatvalues(fit_step)
+threshold <- 3*sum(hatvalues(fit_step))/nrow(white)
+which(abs(hv) > threshold)
+```
+
+(3) Cook's Distance
+
+```{r}
+cook <- cooks.distance(fit_step)
+plot(fit_step, which=4)
+```
+
+```{r}
+new_white <- white[-c(1527, 1654, 1664, 2782, 3902),]
 ```
 
 ```{r}
@@ -222,6 +263,10 @@ plot(fit_step_no_outliers)
 The residuals for the best subsets and stepwise regression models look relatively the same. Therefore, we should go with the model which has greater simplicity. Thus, the model we are going to further examine is the best subsets regression model.
 
 Model: fit_subset = alcohol ~ fixed.acidity + volatile.acidity + residual.sugar + free.sulfur.dioxide + density + pH + sulphates + quality)
+
+```{r}
+summary(fit_step_no_outliers)
+```
 
 ## Part 4: Transformations, Residual Analysis, and LINE Conditions
 
@@ -268,7 +313,7 @@ print(lambda)
 new_alcohol = (new_white$alcohol)^lambda
 ```
 
-lambda = 0.1010101
+lambda = 0.060606
 
 ```{r}
 fit_boxcox = lm(new_alcohol ~ new_white$fixed.acidity + new_white$volatile.acidity + new_white$residual.sugar + new_white$free.sulfur.dioxide + new_white$density + new_white$pH + new_white$sulphates + new_white$quality)
@@ -289,62 +334,59 @@ plot(fit_boxcox)
   
 * LINE conditions are met
 
-## 3. Power Transformation
+
+From the above transformations, we see that there are no significant changes with either a log transformation on Y or a BoxCox transformation. 
+
+# Answering Research Questions
+
+## Which factors affect alcohol content the most for white wine?
+
+$H_0:$ $\beta_1$ = $\beta_2$ = $\beta_3$ = $\beta_4$ = $\beta_5$ = $\beta_6$ = $\beta_7$= $\beta_8$ = 0 
+
+$H_a:$ at least one $\beta_k \neq 0$ for $k=1,2,3,4,5,6,7,8$
 
 ```{r}
-power = powerTransform(cbind(new_white$fixed.acidity, new_white$volatile.acidity, new_white$residual.sugar, new_white$free.sulfur.dioxide, new_white$density, new_white$pH, new_white$sulphates, new_white$quality)~1, data=new_white)
-power$lambda
+mod.red = lm(new_white$alcohol ~ 1)
+mod.full = fit_sub_no_outliers
+anova(mod.red, mod.full)
 ```
 
+Since the p-value of 2.2e-16 < $\alpha=0.05$, we must reject the null hypothesis. Therefore, not all $\beta_1 = \beta_2 = \beta_3 = \beta_4 = \beta_5 = \beta_6 = \beta_7= \beta_8 = 0$. There is sufficient evidence to conclude that some of the variation in alcohol content is explained by one or more of these predictors.
+
+## Is the quality and density of wine significant in predicting the amount of alcohol in a particular wine?
+
+$H_0:$ $\beta_5$ = $\beta_8$ = 0 
+
+$H_a:$ at least one $\beta_k \neq 0$ for $k=5,8$
 
 ```{r}
-vol <- new_white$volatile.acidity^-0.1164062
-res <- new_white$residual.sugar^0.5070629
-free_sul <- new_white$free.sulfur.dioxide^0.4606441
-den <- new_white$density^3.0743939
-pH <- new_white$pH^-1.4484538
-sul <- new_white$sulphates^-0.4040728
-fix <- new_white$fixed.acidity^-0.0910319
-qual <- new_white$quality^0.7379825
-fit_power = lm(new_white$alcohol ~ fix + vol + res + free_sul + den + pH + sul + qual)
-plot(fit_power)
+mod.red = lm(new_white$alcohol ~ new_white$fixed.acidity + new_white$volatile.acidity + new_white$residual.sugar + new_white$free.sulfur.dioxide + new_white$pH + new_white$sulphates)
+mod.full = fit_sub_no_outliers
+anova(mod.red,mod.full)
 ```
 
-* Residuals vs. Fit Plot
+Since the p-value of 2.2e-16 < $\alpha=0.05$, we must reject the null hypothesis. Therefore, both $\beta_5 = \beta_8 \neq 0$. There is sufficient evidence to conclude that quality and density of white wine is significant in predicting the amount of alcohol.
 
-    + residuals are evenly spread but appear to be mildly fanning, so error terms may not be constant
-  
-    + linear fit is a good model
-  
-    + independent
-
-* Normal Q-Q Plot
-
-    + residuals follow the line but still curve on both ends
-  
-* LINE conditions are not met
-
-From the above transformations, we see that either a log transformation on Y or a BoxCox transformation gives us the best model. 
-
-# Outliers and High Leverage Points
-
-## Outliers
-```{r}
-out = rstudent(fit_boxcox)
-which(abs(out) > 3)
-```
-
-## Influential points
-```{r}
-hv <- hatvalues(fit_boxcox)
-threshold <- 3*sum(hatvalues(fit_boxcox))/nrow(white)
-which(abs(hv) > threshold)
-```
-
-## Cook's Distance
+## What is the expected amount of alcohol in wine when all other factors are average?
 
 ```{r}
-cook <- cooks.distance(fit_boxcox)
-plot(fit_boxcox, which=4)
+alcohol <- new_white$alcohol
+fixed_acidity <- new_white$fixed.acidity
+volatile_acidity <- new_white$volatile.acidity
+residual_sugar <- new_white$residual.sugar
+free_sulfur <- new_white$free.sulfur.dioxide
+density <- new_white$density
+pH <- new_white$pH
+sulphates <- new_white$sulphates
+quality <- new_white$quality
 ```
 
+```{r}
+fit = lm(alcohol ~ fixed_acidity + volatile_acidity + residual_sugar + free_sulfur + density + pH + sulphates + quality)
+
+avg = data.frame(fixed_acidity = mean(fixed_acidity), volatile_acidity = mean(volatile_acidity), residual_sugar = mean(residual_sugar), free_sulfur = mean(free_sulfur), density = mean(density), pH = mean(pH), sulphates = mean(sulphates), quality = mean(quality))
+
+predict(fit, avg, interval="confidence", level = .95)
+```
+
+We are 95% confident that the expected alcohol content is between 10.504 and 10.524 percent given that all other variables are averaged.

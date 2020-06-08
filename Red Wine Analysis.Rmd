@@ -1,0 +1,250 @@
+---
+title: "Red Wine Data Analysis"
+author: "Madeline Li"
+date: "6/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+library(leaps)
+library(ggplot2)
+library(reshape2)
+library(MASS)
+```
+
+```{r}
+dat = read.csv('winequality-red.csv', header = T)
+
+facid <- dat$fixed.acidity
+vacid <- dat$volatile.acidity
+cacid <- dat$citric.acid
+sugar <- dat$residual.sugar
+chlor <- dat$chlorides
+fsd <- dat$free.sulfur.dioxide
+tsd <- dat$total.sulfur.dioxide
+dens <- dat$density
+ph <- dat$pH
+sul <- dat$sulphates
+qual <- as.factor(dat$quality)
+alc <- dat$alcohol
+```
+
+```{r}
+ get_lower_tri <- function(corr_white){
+    corr_white[lower.tri(corr_white)]<- NA
+    return(corr_white)
+  }
+```
+
+```{r}
+corr_white <- round(cor(dat),2)
+melted_white_lower <- melt(get_lower_tri(corr_white))
+```
+
+```{r}
+ggheatmap <- ggplot(melted_white_lower, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()
+
+ggheatmap + 
+geom_text(aes(Var2, Var1, label = value), color = "black", size = 3) +
+theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  axis.ticks = element_blank(),
+  legend.justification = c(1, 0),
+  legend.position = c(0.6, 0.7),
+  legend.direction = "horizontal")+
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5))
+```
+
+```{r}
+pairs(dat)
+cor(dat)
+```
+
+###Use Step-wise Regression with AIC
+```{r}
+mod0 = lm(alcohol ~ 1, data = dat)
+mod.all = lm(alcohol ~., data = dat)
+step(mod0, scope = list(lower = mod0, upper = mod.all))
+
+fit <- lm(formula = alcohol ~ density + quality + fixed.acidity + pH + 
+    residual.sugar + sulphates + free.sulfur.dioxide + citric.acid + 
+    volatile.acidity + chlorides + total.sulfur.dioxide, data = dat)
+```
+
+### Check for Assumptions
+```{r}
+qqnorm(fit$residuals)
+qqline(fit$residuals)
+plot(fit$fitted.values,fit$residuals,
+     xlab="Fitted Values",ylab="Residuals",main="Residuals vs Fitted")
+abline(h = 0)
+```
+
+###Best Subsets Regression 
+```{r}
+library(leaps)
+mod = regsubsets(cbind(facid, vacid, cacid, sugar, chlor, fsd, tsd, dens, ph, sul, qual), alc)
+summary.mod = summary(mod)
+summary.mod$which
+
+summary.mod$rsq
+
+summary.mod$adjr2
+
+n = nrow(dat)
+rss = summary.mod$rss
+mse = c(rss[1]/(n-2), rss[2]/(n-3), rss[3]/(n-4), rss[4]/(n-5), rss[5]/(n-6), rss[6]/(n-7), rss[7]/(n-8), rss[8]/(n-9))
+mse
+
+summary.mod$cp
+# facid, vacid, cacid, sugar, dens, ph, sul, qual
+
+fit <- lm(alc ~facid+vacid+cacid+sugar+dens+ph+sul+qual)
+```
+
+### Check for Assumptions Again
+```{r}
+qqnorm(fit$residuals)
+qqline(fit$residuals)
+plot(fit$fitted.values,fit$residuals,
+     xlab="Fitted Values",ylab="Residuals",main="Residuals vs Fitted")
+abline(h = 0)
+```
+
+
+#Outliers
+###Identify Outliers/influential points
+```{r}
+#Externally studentized finds influential points
+#Internal is outlier
+#Identify points that are outliers and identify points that are influential. Points that are both influential and outliers should be removed
+outliers = abs(rstandard(fit))>3
+influentials = abs(rstudent(fit))>3
+
+for(x in 1:nrow(dat)){
+  if(outliers[x] == TRUE) {
+    if(influentials[x]==TRUE) {
+      print(x)
+    } 
+  }
+}
+
+```
+
+###Remove Points
+```{r}
+ndat = dat[-c(244, 245, 266, 354, 396, 468, 485, 494, 500, 557, 559, 560, 565, 634, 652, 654, 732, 1427, 1575)]
+facid <- ndat$fixed.acidity
+vacid <- ndat$volatile.acidity
+cacid <- ndat$citric.acid
+sugar <- ndat$residual.sugar
+chlor <- ndat$chlorides
+fsd <- ndat$free.sulfur.dioxide
+tsd <- ndat$total.sulfur.dioxide
+dens <- ndat$density
+ph <- ndat$pH
+sul <- ndat$sulphates
+qual <- as.factor(ndat$quality)
+alc <- ndat$alcohol
+```
+
+###Create new model without outliers/influential points
+```{r}
+#Best subsets
+#R squared
+library(leaps)
+mod = regsubsets(cbind(facid, vacid, cacid, sugar, chlor, fsd, tsd, dens, ph, sul, qual), alc)
+summary.mod = summary(mod)
+summary.mod$which
+
+summary.mod$rsq
+
+summary.mod$adjr2
+
+n = nrow(dat)
+rss = summary.mod$rss
+mse = c(rss[1]/(n-2), rss[2]/(n-3), rss[3]/(n-4), rss[4]/(n-5), rss[5]/(n-6), rss[6]/(n-7), rss[7]/(n-8), rss[8]/(n-9))
+mse
+
+summary.mod$cp
+#Same model
+fit <- lm(alc ~facid+vacid+cacid+sugar+dens+ph+sul+qual)
+```
+
+###Model Adequacy Checking Again
+```{r}
+plot(fit$fitted.values, fit$residuals,
+     ylab="Residuals",
+     xlab = "Fitted Values",
+     main="Residuals vs Fitted Values")
+abline(h=0,col="red")
+
+qqnorm(fit$residuals)
+qqline(fit$residuals)
+
+```
+
+###Research Questions
+
+General linear F-test to test the two factors
+```{r}
+nullfit <- lm(alcohol ~ fixed.acidity + volatile.acidity + citric.acid + residual.sugar +  pH + sulphates, data = dat) 
+fullfit <- lm(alcohol ~ fixed.acidity + volatile.acidity + citric.acid + residual.sugar + density + pH + sulphates + quality, data = dat) 
+
+anova(nullfit, fullfit)
+```
+
+Testing significance of all factors
+```{r}
+nullfit <- lm(alcohol ~ 1, data = dat)
+fullfit <- lm(alcohol ~ fixed.acidity + volatile.acidity + citric.acid + residual.sugar + density + pH + sulphates + quality, data = dat) 
+
+anova(nullfit, fullfit)
+```
+
+Prediction Interval
+```{r}
+mfacid <- mean(ndat$fixed.acidity)
+mvacid <- mean(ndat$volatile.acidity)
+mcacid <- mean(ndat$citric.acid)
+msugar <- mean(ndat$residual.sugar)
+mchlor <- mean(ndat$chlorides)
+mfsd <- mean(ndat$free.sulfur.dioxide)
+mtsd <- mean(ndat$total.sulfur.dioxide)
+mdens <- mean(ndat$density)
+mph <- mean(ndat$pH)
+msul <- mean(ndat$sulphates)
+mqual <- round(mean(ndat$quality))
+
+thedata = data.frame(facid = mfacid, vacid = mvacid, cacid = mcacid, sugar = msugar, chlor=mchlor, fsd = mfsd, tsd = mtsd, dens = mdens, ph = mph, sul = msul, qual = as.factor(mqual))
+
+predict(fit, thedata, interval = "confidence", level = 0.95)
+```
+
+
+
+
+
+
+
+
+
+
