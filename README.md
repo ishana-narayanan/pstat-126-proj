@@ -1,3 +1,7 @@
 # Wine Data Analysis
 
-Final Report: 
+## Written By:
+
+Ishana Narayanan
+
+Madeline Li
